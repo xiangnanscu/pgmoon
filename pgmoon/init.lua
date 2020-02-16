@@ -7,7 +7,7 @@ do
   rshift, lshift, band = _obj_0.rshift, _obj_0.lshift, _obj_0.band
 end
 local unpack = table.unpack or unpack
-local VERSION = "1.8.0"
+local VERSION = "1.10.0"
 local _len
 _len = function(thing, t)
   if t == nil then
@@ -188,7 +188,7 @@ do
       local opts
       if self.sock_type == "nginx" then
         opts = {
-          pool = self.pool_name or tostring(self.host) .. ":" .. tostring(self.port) .. ":" .. tostring(self.database)
+          pool = self.pool_name or tostring(self.host) .. ":" .. tostring(self.port) .. ":" .. tostring(self.database) .. ":" .. tostring(self.user)
         }
       end
       local ok, err = self.sock:connect(self.host, self.port, opts)
@@ -291,6 +291,9 @@ do
       end
     end,
     query = function(self, q)
+      if q:find(NULL) then
+        return nil, "invalid null byte in query"
+      end
       self:post(q)
       local row_desc, data_rows, command_complete, err_msg
       local result, notifications
@@ -464,7 +467,11 @@ do
           offset = offset + 4
           if len < 0 then
             if self.convert_null then
-              out[field_name] = self.NULL
+              if not self.compact then
+                out[field_name] = self.NULL
+              else
+                out[i] = self.NULL
+              end
             end
             _continue_0 = true
             break
@@ -486,7 +493,11 @@ do
               end
             end
           end
-          out[field_name] = value
+          if not self.compact then
+            out[field_name] = value
+          else
+            out[i] = value
+          end
           _continue_0 = true
         until true
         if not _continue_0 then

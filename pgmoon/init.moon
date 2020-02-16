@@ -4,7 +4,7 @@ import rshift, lshift, band from require "bit"
 
 unpack = table.unpack or unpack
 
-VERSION = "1.8.0"
+VERSION = "1.10.0"
 
 _len = (thing, t=type(thing)) ->
   switch t
@@ -174,7 +174,7 @@ class Postgres
   connect: =>
     opts = if @sock_type == "nginx"
       {
-        pool: @pool_name or "#{@host}:#{@port}:#{@database}"
+        pool: @pool_name or "#{@host}:#{@port}:#{@database}:#{@user}"
       }
 
     ok, err = @sock\connect @host, @port, opts
@@ -197,7 +197,8 @@ class Postgres
     true
 
   settimeout: (...) =>
-    @sock\settimeout ...
+    @sock\settime
+    ...
 
   disconnect: =>
     sock = @sock
@@ -268,6 +269,9 @@ class Postgres
         error "unknown response from auth"
 
   query: (q) =>
+    if q\find NULL
+      return nil, "invalid null byte in query"
+
     @post q
     local row_desc, data_rows, command_complete, err_msg
 
@@ -394,6 +398,7 @@ class Postgres
 
       -- 4: object id of data type (6)
       data_type = @decode_int row_desc\sub offset + 6, offset + 6 + 3
+
       data_type = @PG_TYPES[data_type] or "string"
 
       -- 2: data type size (10)
@@ -425,7 +430,11 @@ class Postgres
       offset += 4
 
       if len < 0
-        out[field_name] = @NULL if @convert_null
+        if @convert_null
+          if not @compact
+            out[field_name] = @NULL
+          else
+            out[i] = @NULL
         continue
 
       value = data_row\sub offset, offset + len - 1
@@ -441,8 +450,10 @@ class Postgres
         else
           if fn = @type_deserializers[field_type]
             value = fn @, value, field_type
-
-      out[field_name] = value
+      if not @compact
+        out[field_name] = value
+      else
+        out[i] = value
 
     out
 
